@@ -1,4 +1,4 @@
-# llm-fault-diagnosis_FD-LLM
+# llm-fault-diagnosis
 Large Language Model framework for machine fault diagnosis using FFT and statistical features from time-series vibration data.
 
 This repository is the  implementation of:
