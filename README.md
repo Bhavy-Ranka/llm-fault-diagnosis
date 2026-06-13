@@ -10,7 +10,7 @@ This repository is the  implementation of:
 Dataset Used in this :
 (https://www.kaggle.com/datasets/brjapon/cwru-bearing-datasets)
 
-## 2. Final Evaluation Performance (Step 4 epoch)
+## 2. Final Evaluation Performance (4 epoch)
 
 | Metric | Value |
 | :--- | :---: |
