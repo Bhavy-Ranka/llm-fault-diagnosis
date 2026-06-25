@@ -9,13 +9,13 @@ from scipy.stats import skew, kurtosis
 from pathlib import Path
 
 CWRU_FILES = {
-    #Normal baseline 
+    # Normal baseline 
     ("NO",  "none", 0): "archive/cwru/Normal_0.mat",
     ("NO",  "none", 1): "archive/cwru/Normal_1.mat",
     ("NO",  "none", 2): "archive/cwru/Normal_2.mat",
     ("NO",  "none", 3): "archive/cwru/Normal_3.mat",
  
-    #Inner Race Fault 
+    # Inner Race Fault 
     ("IRF", "007",  0): "archive/cwru/IR007_0.mat",
     ("IRF", "007",  1): "archive/cwru/IR007_1.mat",
     ("IRF", "007",  2): "archive/cwru/IR007_2.mat",
@@ -29,7 +29,7 @@ CWRU_FILES = {
     ("IRF", "021",  2): "archive/cwru/IR021_2.mat",
     ("IRF", "021",  3): "archive/cwru/IR021_3.mat",
  
-    #Outer Race Fault (@6 o'clock position)
+    # Outer Race Fault (@6 o'clock position)
     ("ORF", "007",  0): "archive/cwru/OR0076_0.mat",
     ("ORF", "007",  1): "archive/cwru/OR0076_1.mat",
     ("ORF", "007",  2): "archive/cwru/OR0076_2.mat",
@@ -43,7 +43,7 @@ CWRU_FILES = {
     ("ORF", "021",  2): "archive/cwru/OR0216_2.mat",
     ("ORF", "021",  3): "archive/cwru/OR0216_3.mat",
  
-    #Rolling Element / Ball Fault 
+    # Rolling Element / Ball Fault 
     ("REF", "007",  0): "archive/cwru/B007_0.mat",
     ("REF", "007",  1): "archive/cwru/B007_1.mat",
     ("REF", "007",  2): "archive/cwru/B007_2.mat",
@@ -64,14 +64,14 @@ def load_and_segment(file_path: str, window_size: int = 2048,
     key = next((k for k in mat if channel in k), None)    
     signal = mat[key].flatten()
     
-    signal = (signal - np.mean(signal)) / np.std(signal)   
+    # REMOVED GLOBAL NORMALIZATION: Retaining physical metrics (G's) for fault severity tracking
     step = int(window_size * (1 - overlap))
     
     segments = [signal[i: i + window_size]
                 for i in range(0, len(signal) - window_size, step)]
     return np.array(segments)
 
-def compute_fft_magnitude(segment:np.ndarray):
+def compute_fft_magnitude(segment: np.ndarray):
     L = len(segment)
     X = fft(segment)
     magnitude = np.abs(X)[:L // 2]      
@@ -79,9 +79,8 @@ def compute_fft_magnitude(segment:np.ndarray):
 
 
 # Statistical feature extraction    
-TIME_FEATURE_NAMES = ["mean", "RMS", "standard_deviation", "crest_factor","skewness", "shape_factor", "kurtosis","peak_to_peak", "energy_factor", "impulse_factor"]
- 
-FREQ_FEATURE_NAMES = ["peak_frequency", "peak_to_peak_frequency","spectral_kurtosis", "spectral_bandwidth", "spectral_skewness"]
+TIME_FEATURE_NAMES = ["mean", "RMS", "standard_deviation", "crest_factor", "skewness", "shape_factor", "kurtosis", "peak_to_peak", "energy_factor", "impulse_factor"]
+FREQ_FEATURE_NAMES = ["peak_frequency", "spectral_centroid", "spectral_kurtosis", "spectral_bandwidth", "spectral_skewness"]
  
 def time_features(x: np.ndarray) -> list:
     mean       = np.mean(x)
@@ -99,18 +98,23 @@ def time_features(x: np.ndarray) -> list:
  
  
 def frequency_features(mag: np.ndarray, freq: np.ndarray) -> list:
-    mu_mag          = np.mean(mag)
-    peak_freq       = freq[np.argmax(mag)]
-    p2p_freq        = np.max(freq) - np.min(freq)
-    spec_kurt       = kurtosis(mag)
-    spec_skew       = skew(mag)
-    spec_bw         = np.sqrt(
-        np.sum((freq - np.mean(freq)) ** 2 * mag) / (np.sum(mag) + 1e-12)
+    peak_freq   = freq[np.argmax(mag)]
+    
+    # Corrected: Found actual spectral centroid instead of mean of the static frequency array bounds
+    centroid    = np.sum(freq * mag) / (np.sum(mag) + 1e-12)
+    
+    # Corrected: Subtracted center-of-mass centroid instead of absolute frequency midpoint
+    spec_bw     = np.sqrt(
+        np.sum((freq - centroid) ** 2 * mag) / (np.sum(mag) + 1e-12)
     )
-    return [peak_freq, p2p_freq, spec_kurt, spec_bw, spec_skew]
+    
+    spec_kurt   = kurtosis(mag)
+    spec_skew   = skew(mag)
+    
+    return [peak_freq, centroid, spec_kurt, spec_bw, spec_skew]
 
     
-def extract_all_features(segments: np.ndarray,fs: int = 12000):
+def extract_all_features(segments: np.ndarray, fs: int = 12000):
     N = segments.shape[1]
     freq = np.fft.fftfreq(N, 1 / fs)[: N // 2]
     rows = []
@@ -123,16 +127,14 @@ def extract_all_features(segments: np.ndarray,fs: int = 12000):
     return pd.DataFrame(rows, columns=cols)
 
 
-
 # String based FFT tokenisation
-def encode_fft(magnitude:np.ndarray,separator = ",",D=3):
+def encode_fft(magnitude: np.ndarray, separator=",", D=3):
     scale = 10 ** D
     quantised = [int(v * scale) for v in magnitude]
     tokens = [str(q) if not np.isnan(q) else "NaN" for q in quantised]
     return separator.join(tokens)
 
 
-# Same as research paper 
 FFT_INSTRUCTION_TEMPLATE = (
     "Given machine information: {equip_info}; and working conditions: "
     "{load} hp, {speed} rpm, please predict the operating status of the "
@@ -156,7 +158,7 @@ EQUIP_INFO = (
 
 FAULT_LABELS = ["NO", "IRF", "ORF", "REF"]
 
-def build_fft_prompt(encoded_fft: str, label: str,load: int, equip_info: str = EQUIP_INFO):
+def build_fft_prompt(encoded_fft: str, label: str, load: int, equip_info: str = EQUIP_INFO):
     speed = LOAD_TO_RPM[load]
     return {
         "instruction": FFT_INSTRUCTION_TEMPLATE.format(
@@ -166,7 +168,7 @@ def build_fft_prompt(encoded_fft: str, label: str,load: int, equip_info: str = E
     }
  
  
-def build_stat_prompt(stat_text: str, label: str,load: int, equip_info: str = EQUIP_INFO):
+def build_stat_prompt(stat_text: str, label: str, load: int, equip_info: str = EQUIP_INFO):
     speed = LOAD_TO_RPM[load]
     return {
         "instruction": STAT_INSTRUCTION_TEMPLATE.format(
@@ -193,14 +195,11 @@ def generate_all_data(cwru_files=CWRU_FILES, window_size=2048, overlap=0.2, fft_
         segments = load_and_segment(file_path, window_size, overlap)
         
         for seg in segments:
-            
             mag = compute_fft_magnitude(seg)
             
             encoded_fft = encode_fft(mag, D=fft_D) 
-            
             fft_prompts.append(build_fft_prompt(encoded_fft, label, load))
             
-
             tf = time_features(seg)
             ff = frequency_features(mag, freq)
             stat_summary = ", ".join([f"{n}: {v:.4f}" for n, v in zip(TIME_FEATURE_NAMES + FREQ_FEATURE_NAMES, tf + ff)])
@@ -216,4 +215,4 @@ if __name__ == "__main__":
     with open("cwru_stat_dataset.json", "w") as f:
         json.dump(stat_data, f, indent=2)
         
-    print(f"Done! Saved {len(fft_data)} FFT samples and {len(stat_data)} statistical samples.")    
+    print(f"Done! Saved {len(fft_data)} FFT samples and {len(stat_data)} statistical samples.")
