@@ -17,10 +17,10 @@ Dataset Used in this :
 
 | Metric | Value |
 | :--- | :---: |
-| **Accuracy** | 0.9216 |
-| **Precision** | 0.9265 |
-| **Recall** | 0.9216 |
-| **F1-Score** | 0.9210 |
+| **Accuracy** | 92.16 |
+| **Precision** | 92.65.65 |
+| **Recall** | 92.16 |
+| **F1-Score** | 92.10 |
 
 ### 2. Classification Report
 
