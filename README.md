@@ -15,10 +15,10 @@ Dataset Used in this :
 
 ### 1. Overall Performance
 
-| Metric | Value |
+| Metric | Value(%) |
 | :--- | :---: |
 | **Accuracy** | 92.16 |
-| **Precision** | 92.65.65 |
+| **Precision** | 92.65 |
 | **Recall** | 92.16 |
 | **F1-Score** | 92.10 |
 
